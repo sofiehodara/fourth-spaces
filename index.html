@@ -154,6 +154,15 @@ html,body{
   font-size:10px;color:var(--mid);
   margin-top:2px;letter-spacing:.05em;
 }
+/* text-only grid cell (mobile) */
+.gc-text{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+  align-items:flex-start;justify-content:flex-end;
+  padding:14px;
+}
+.gc-text .gc-word{font-size:clamp(18px,4vw,26px);}
+.gc-text .gc-date{font-size:11px;margin-top:4px;}
 
 /* DETAIL TOP */
 #det-bar{
@@ -606,13 +615,29 @@ function cloneForDetail(scan){
 let gridAF=null;
 const gridCells=[];
 
+// detect mobile/touch device
+const isMobile=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+
 function buildGrid(){
   const inner=document.getElementById('grid-inner');
   inner.innerHTML='';
   if(gridAF){cancelAnimationFrame(gridAF);gridAF=null;}
   gridCells.length=0;
 
-  // Reuse the MAIN renderer — no extra WebGL context needed
+  if(isMobile){
+    // TEXT-ONLY grid on mobile — no WebGL, no context limit
+    SCANS.forEach((scan,i)=>{
+      const cell=document.createElement('div');cell.className='gc';
+      const txt=document.createElement('div');txt.className='gc-text';
+      txt.innerHTML=`<div class="gc-word">${scan.word}</div><div class="gc-date">${fmtDate(scan.date)}</div>`;
+      cell.appendChild(txt);inner.appendChild(cell);
+      cell.addEventListener('click',()=>enterScan(i));
+      cell.addEventListener('touchend',e=>{e.preventDefault();enterScan(i);},{passive:false});
+    });
+    return;
+  }
+
+  // DESKTOP: 3D grid using main renderer
   SCANS.forEach((scan,i)=>{
     const cell=document.createElement('div');cell.className='gc';
     const cv=document.createElement('canvas');
@@ -645,25 +670,20 @@ function buildGrid(){
     gridCells.push({s,cam,mesh,cv,ctx,rot:i*Math.PI*.5+.4});
 
     cell.addEventListener('click',()=>enterScan(i));
-    cell.addEventListener('touchend',e=>{e.preventDefault();enterScan(i);},{passive:false});
   });
 
-  // render all cells using the single main renderer, copy to 2D canvases
   function tick(){
     gridAF=requestAnimationFrame(tick);
     gridCells.forEach(gc=>{
       const w=gc.cv.offsetWidth,h=gc.cv.offsetHeight;
       if(!w||!h)return;
-      if(gc.cv.width!==w||gc.cv.height!==h){
-        gc.cv.width=w;gc.cv.height=h;
-      }
+      if(gc.cv.width!==w||gc.cv.height!==h){gc.cv.width=w;gc.cv.height=h;}
       gc.rot+=0.005;gc.mesh.rotation.y=gc.rot;
       gc.cam.aspect=w/h;gc.cam.updateProjectionMatrix();
       renderer.setSize(w,h,false);
       renderer.render(gc.s,gc.cam);
       gc.ctx.drawImage(renderer.domElement,0,0,w,h);
     });
-    // restore main renderer size for detail view
     renderer.setSize(innerWidth,innerHeight,false);
   }
   tick();
