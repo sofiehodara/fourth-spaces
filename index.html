@@ -612,12 +612,7 @@ function buildGrid(){
   if(gridAF){cancelAnimationFrame(gridAF);gridAF=null;}
   gridCells.length=0;
 
-  // single offscreen renderer
-  const gr=new THREE.WebGLRenderer({antialias:false,powerPreference:'low-power'});
-  gr.setClearColor(0x12151a,1);gr.setPixelRatio(1);
-  gr.outputEncoding=THREE.sRGBEncoding;
-  gr.toneMapping=THREE.ACESFilmicToneMapping;gr.toneMappingExposure=1.15;
-
+  // Reuse the MAIN renderer — no extra WebGL context needed
   SCANS.forEach((scan,i)=>{
     const cell=document.createElement('div');cell.className='gc';
     const cv=document.createElement('canvas');
@@ -653,6 +648,7 @@ function buildGrid(){
     cell.addEventListener('touchend',e=>{e.preventDefault();enterScan(i);},{passive:false});
   });
 
+  // render all cells using the single main renderer, copy to 2D canvases
   function tick(){
     gridAF=requestAnimationFrame(tick);
     gridCells.forEach(gc=>{
@@ -660,14 +656,15 @@ function buildGrid(){
       if(!w||!h)return;
       if(gc.cv.width!==w||gc.cv.height!==h){
         gc.cv.width=w;gc.cv.height=h;
-        gc.cam.aspect=w/h;gc.cam.updateProjectionMatrix();
       }
       gc.rot+=0.005;gc.mesh.rotation.y=gc.rot;
-      gr.setSize(w,h,false);
       gc.cam.aspect=w/h;gc.cam.updateProjectionMatrix();
-      gr.render(gc.s,gc.cam);
-      gc.ctx.drawImage(gr.domElement,0,0,w,h);
+      renderer.setSize(w,h,false);
+      renderer.render(gc.s,gc.cam);
+      gc.ctx.drawImage(renderer.domElement,0,0,w,h);
     });
+    // restore main renderer size for detail view
+    renderer.setSize(innerWidth,innerHeight,false);
   }
   tick();
 }
@@ -800,7 +797,7 @@ document.getElementById('sl-embody').addEventListener('input',function(){
   if(activeScan?.interaction!=='embody')return;
   const t=+this.value;
   if(t<=0){camera.position.z=EMBODY_BASE+(-t)*9;pivot.scale.setScalar(1);}
-  else{camera.position.z=Math.max(0.02,EMBODY_BASE-t*2.88);pivot.scale.setScalar(1+t*18);}
+  else{camera.position.z=Math.max(0.005,EMBODY_BASE-t*2.895);pivot.scale.setScalar(1+t*32);}
   setAudio(t*0.4);
 });
 
