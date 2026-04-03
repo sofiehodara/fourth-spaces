@@ -1,1 +1,973 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Fourth Spaces</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Neuton:ital,wght@0,400;0,700;1,400&family=Space+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --ink:#0e0e0e;
+  --paper:#f0f0f0;
+  --mid:#888888;
+  --accent:#a8c4d4;
+}
+html,body{
+  width:100%;height:100%;
+  background:var(--ink);color:var(--paper);
+  font-family:"Space Mono",monospace;font-weight:300;font-size:16px;
+  overflow:hidden;-webkit-tap-highlight-color:transparent;
+}
+body::after{
+  content:"";position:fixed;inset:0;z-index:100;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  background-size:200px;opacity:.4;mix-blend-mode:overlay;
+}
 
+/* ── LOADING ── */
+#loading{
+  position:fixed;inset:0;z-index:50;background:var(--ink);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .6s;
+}
+#loading.gone{opacity:0;pointer-events:none;}
+#loading-title{
+  font-family:"Neuton",serif;font-style:italic;
+  font-size:22px;color:var(--paper);margin-bottom:24px;
+}
+#loading-track{width:140px;height:1px;background:rgba(168,196,212,.15);}
+#loading-fill{height:100%;width:0%;background:var(--accent);transition:width .25s;}
+#loading-label{
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--mid);margin-top:12px;
+}
+
+/* ── ABOUT ── */
+#about{
+  position:fixed;inset:0;z-index:40;background:var(--ink);
+  display:flex;align-items:center;justify-content:center;
+  padding:60px 32px;
+  opacity:0;pointer-events:none;transition:opacity .35s;
+}
+#about.on{opacity:1;pointer-events:auto;}
+#about-box{max-width:540px;width:100%;}
+#about-close{
+  display:block;margin-bottom:24px;
+  font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--mid);background:none;border:none;cursor:pointer;
+  font-family:"Space Mono",monospace;transition:color .2s;
+}
+#about-close:hover{color:var(--paper);}
+#about h2{
+  font-family:"Neuton",serif;font-weight:400;font-style:italic;
+  font-size:clamp(1.3rem,3vw,1.9rem);color:var(--paper);margin-bottom:18px;
+}
+#about p{
+  font-size:15px;line-height:1.85;color:var(--mid);margin-bottom:12px;
+  font-family:"Neuton",serif;
+}
+
+/* ── ARCHIVE BAR ── */
+#archive-bar{
+  position:fixed;top:0;left:0;right:0;z-index:10;
+  padding:18px 24px;
+  display:flex;align-items:flex-start;justify-content:space-between;
+}
+#site-title{
+  font-family:"Neuton",serif;font-weight:400;
+  font-size:16px;color:var(--paper);
+}
+#site-sub{
+  font-family:"Neuton",serif;font-style:italic;
+  font-size:14px;color:var(--mid);margin-top:3px;
+}
+#about-btn{
+  font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--mid);background:none;border:none;cursor:pointer;
+  font-family:"Space Mono",monospace;transition:color .2s;padding:0;
+  margin-top:2px;
+}
+#about-btn:hover{color:var(--paper);}
+
+/* ── MAIN CANVAS (detail only) ── */
+#canvas-wrap{
+  position:fixed;inset:0;z-index:1;
+  display:none;cursor:grab;
+}
+#canvas-wrap:active{cursor:grabbing;}
+#canvas-wrap.on{display:block;}
+#canvas-wrap canvas{
+  display:block;
+  width:100%!important;height:100%!important;
+}
+
+/* ── GRID ── */
+#grid{
+  position:fixed;inset:0;z-index:5;
+  display:none;
+  align-items:center;justify-content:center;
+  padding:68px 20px 20px;
+}
+#grid.on{display:flex;}
+#grid-inner{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  grid-template-rows:1fr 1fr;
+  gap:10px;
+  width:100%;max-width:820px;
+  height:100%;max-height:680px;
+}
+.gc{
+  position:relative;
+  border:1px solid rgba(168,196,212,.12);
+  cursor:pointer;overflow:hidden;
+  transition:border-color .25s;
+  background:rgba(240,236,228,.015);
+}
+.gc:hover{border-color:rgba(168,196,212,.35);}
+.gc canvas{
+  position:absolute!important;
+  inset:0!important;
+  width:100%!important;height:100%!important;
+}
+.gc-label{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:10px 12px;
+  background:linear-gradient(transparent,rgba(26,23,20,.92));
+  pointer-events:none;z-index:2;
+}
+.gc-word{
+  font-family:"Neuton",serif;font-style:italic;
+  font-size:16px;color:var(--paper);
+}
+.gc-date{
+  font-size:10px;color:var(--mid);margin-top:3px;letter-spacing:.06em;
+}
+
+/* ── DETAIL BAR ── */
+#detail-bar{
+  position:fixed;top:0;left:0;right:0;z-index:10;
+  height:58px;background:var(--ink);
+  border-bottom:1px solid rgba(168,196,212,.12);
+  display:none;align-items:center;
+}
+#detail-bar.on{display:flex;}
+#back-btn{
+  height:58px;padding:0 20px;
+  font-size:11px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mid);background:none;border:none;
+  border-right:1px solid rgba(168,196,212,.12);
+  cursor:pointer;font-family:"Space Mono",monospace;
+  transition:color .2s;flex-shrink:0;
+}
+#back-btn:hover{color:var(--paper);}
+#detail-meta{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;
+}
+#dm-word{
+  font-family:"Neuton",serif;font-style:italic;
+  font-size:17px;color:var(--paper);line-height:1.2;
+}
+#dm-date{
+  font-size:10px;color:var(--mid);margin-top:2px;letter-spacing:.08em;
+}
+
+/* ── CONTROLS ── */
+#ctrl-bar{
+  position:fixed;bottom:0;left:0;right:0;z-index:10;
+  background:var(--ink);border-top:1px solid rgba(168,196,212,.15);
+  min-height:76px;
+  display:none;flex-direction:row;align-items:center;justify-content:center;
+  padding:14px 28px;
+}
+#ctrl-bar.on{display:flex;}
+
+.cpanel{
+  display:none;
+  flex-direction:column;gap:10px;
+  width:100%;max-width:480px;
+  align-items:stretch;
+}
+.cpanel.on{display:flex;}
+
+.crow{display:flex;align-items:center;gap:14px;width:100%;}
+.clbl{
+  font-family:"Neuton",serif;font-style:italic;
+  font-size:15px;color:var(--mid);min-width:64px;
+}
+.clbl.r{text-align:right;}
+.cslider{
+  -webkit-appearance:none;appearance:none;
+  flex:1;height:3px;
+  background:rgba(168,196,212,.25);
+  outline:none;cursor:pointer;
+  border-radius:2px;
+}
+.cslider::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:18px;height:18px;border-radius:50%;
+  background:var(--accent);cursor:pointer;
+  box-shadow:0 0 8px rgba(168,196,212,.3);
+}
+.cslider::-moz-range-thumb{
+  width:22px;height:22px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:none;
+}
+
+@media(max-width:600px){
+  #ctrl-bar{padding:12px 16px;}
+  .clbl{min-width:48px;font-size:13px;}
+}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div id="loading-title">Fourth Spaces</div>
+  <div id="loading-track"><div id="loading-fill"></div></div>
+  <div id="loading-label">loading</div>
+</div>
+
+<!-- ABOUT -->
+<div id="about">
+  <div id="about-box">
+    <button id="about-close">← close</button>
+    <h2>Fourth Spaces</h2>
+    <p><i>Fourth Spaces</i> is a web-based interactive visual dictionary presenting 3D models made in Boston from 2024 to 2026. The models were created using Scaniverse, a free photogrammetry smartphone application, that translates physical environments into digital scans.</p>
+    <p>The resulting 3D models capture the moments of scanning—circling objects and architecture with a mobile phone. This action results in broken, glitched, and incomplete representations that highlight the limitations of our tools and the ephemerality of the moments themselves. The imagery presents a “fourth space”: a realm between the physical and digital, in which the scans forget and deny the physical world, while breathing life into and embodying the opportunities of digital spaces.</p>
+  </div>
+</div>
+
+<!-- CANVAS (detail view) -->
+<div id="canvas-wrap"></div>
+
+<!-- ARCHIVE BAR -->
+<div id="archive-bar">
+  <div>
+    <div id="site-title">Fourth Spaces</div>
+    <div id="site-sub">an interactive dictionary</div>
+  </div>
+  <button id="about-btn">ABOUT</button>
+</div>
+
+<!-- GRID -->
+<div id="grid"><div id="grid-inner"></div></div>
+
+<!-- DETAIL BAR -->
+<div id="detail-bar">
+  <button id="back-btn">← back</button>
+  <div id="detail-meta">
+    <div id="dm-word"></div>
+    <div id="dm-date"></div>
+  </div>
+  <div style="width:80px;flex-shrink:0;"></div>
+</div>
+
+<!-- CONTROLS -->
+<div id="ctrl-bar">
+
+  <div class="cpanel" id="cp-forget">
+    <div class="crow">
+      <span class="clbl">cohere</span>
+      <input type="range" class="cslider" id="sl-forget" min="-1" max="1" step="0.005" value="0">
+      <span class="clbl r">disperse</span>
+    </div>
+  </div>
+
+  <div class="cpanel" id="cp-deny">
+    <div class="crow">
+      <span class="clbl">squish</span>
+      <input type="range" class="cslider" id="sl-deny" min="-1" max="1" step="0.01" value="0">
+      <span class="clbl r">stretch</span>
+    </div>
+  </div>
+
+  <div class="cpanel" id="cp-breathe">
+    <div class="crow">
+      <span class="clbl">exhale</span>
+      <input type="range" class="cslider" id="sl-breathe" min="-1" max="1" step="0.01" value="0">
+      <span class="clbl r">inhale</span>
+    </div>
+  </div>
+
+  <div class="cpanel" id="cp-embody">
+    <div class="crow">
+      <span class="clbl">out</span>
+      <input type="range" class="cslider" id="sl-embody" min="-1" max="1" step="0.005" value="0">
+      <span class="clbl r">in</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// SUPABASE
+// ═══════════════════════════════════════════
+const { createClient } = supabase;
+const sb = createClient(
+  'https://gxmfzqoprpcwwpwwszfh.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4bWZ6cW9wcnBjd3dwd3dzemZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNjE2NDcsImV4cCI6MjA5MDczNzY0N30.EICC6p90b7HBirIzftLXuuGbv_FcIRRBqZQHDZVtCLQ'
+);
+
+const ORDER = ['forget','deny','breathe','embody'];
+
+async function fetchScans(){
+  const {data,error} = await sb.from('scans').select('*').order('display_order');
+  if(error){console.error(error);return[];}
+  const mapped = data.map(s=>({
+    ...s,
+    interaction: s.interaction==='refuse'   ? 'deny'
+               : s.interaction==='repeat'   ? 'breathe'
+               : s.interaction==='multiply' ? 'breathe'
+               : s.interaction
+  }));
+  mapped.sort((a,b)=>ORDER.indexOf(a.interaction)-ORDER.indexOf(b.interaction));
+  return mapped;
+}
+
+// ═══════════════════════════════════════════
+// AUDIO — light abstraction at neutral
+// ═══════════════════════════════════════════
+let actx, gainNode, distNode, filterNode, srcNode;
+let audioReady=false, audioUrl=null;
+
+function makeCurve(amt){
+  const n=256,c=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const x=(i*2/n)-1;
+    c[i]=amt===0?x:((Math.PI+amt)*x)/(Math.PI+amt*Math.abs(x));
+  }
+  return c;
+}
+
+async function startAudio(url){
+  if(!actx){
+    actx=new(window.AudioContext||window.webkitAudioContext)();
+  }
+  if(actx.state==='suspended') await actx.resume();
+  if(url===audioUrl&&audioReady) return;
+  audioUrl=url; audioReady=false;
+
+  if(srcNode){try{srcNode.stop();}catch(e){} srcNode=null;}
+
+  // rebuild chain
+  gainNode=actx.createGain();
+  distNode=actx.createWaveShaper(); distNode.oversample='2x';
+  filterNode=actx.createBiquadFilter(); filterNode.type='lowpass';
+
+  // light reverb
+  const rl=actx.sampleRate*1.0;
+  const rb=actx.createBuffer(2,rl,actx.sampleRate);
+  for(let ch=0;ch<2;ch++){
+    const d=rb.getChannelData(ch);
+    for(let i=0;i<rl;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/rl,3);
+  }
+  const conv=actx.createConvolver(); conv.buffer=rb;
+  const rvg=actx.createGain(); rvg.gain.value=0.15;
+
+  distNode.connect(filterNode);
+  filterNode.connect(gainNode);
+  gainNode.connect(actx.destination);
+  filterNode.connect(conv);
+  conv.connect(rvg);
+  rvg.connect(actx.destination);
+
+  // LIGHT abstraction: minimal processing at neutral
+  filterNode.frequency.value=16000; // nearly fully open
+  filterNode.Q.value=0;
+  distNode.curve=makeCurve(0); // no distortion
+  gainNode.gain.value=0;
+
+  try{
+    const res=await fetch(url);
+    const buf=await res.arrayBuffer();
+    const dec=await actx.decodeAudioData(buf);
+    srcNode=actx.createBufferSource();
+    srcNode.buffer=dec;
+    srcNode.loop=true;
+    srcNode.playbackRate.value=0.92; // very slight slow, barely noticeable
+    srcNode.connect(distNode);
+    srcNode.start(0);
+    gainNode.gain.setTargetAtTime(0.65,actx.currentTime,0.5);
+    audioReady=true;
+  }catch(e){console.warn('audio fail:',e);}
+}
+
+function setAudio(t){
+  // t: -1=cohere/squish/exhale/out, 0=neutral, +1=disperse/stretch/inhale/in
+  if(!audioReady||!actx||!gainNode) return;
+  const now=actx.currentTime;
+  if(t<=0){
+    // toward negative: open up toward clean
+    const u=-t;
+    gainNode.gain.setTargetAtTime(0.6+u*0.15,now,0.2);
+    filterNode.frequency.setTargetAtTime(16000,now,0.3);
+    distNode.curve=makeCurve(0);
+    if(srcNode) srcNode.playbackRate.setTargetAtTime(0.92+u*0.08,now,0.3);
+  } else {
+    // toward positive: add processing
+    gainNode.gain.setTargetAtTime(0.65+t*0.2,now,0.15);
+    filterNode.frequency.setTargetAtTime(Math.max(400,16000-t*14000),now,0.2);
+    filterNode.Q.setTargetAtTime(t*8,now,0.2);
+    distNode.curve=makeCurve(t*120);
+    if(srcNode) srcNode.playbackRate.setTargetAtTime(Math.max(0.4,0.92-t*0.52),now,0.2);
+  }
+}
+
+function fadeAudio(){
+  if(!gainNode||!actx) return;
+  gainNode.gain.setTargetAtTime(0,actx.currentTime,0.5);
+}
+
+// ═══════════════════════════════════════════
+// THREE.JS SCENE
+// ═══════════════════════════════════════════
+const wrap=document.getElementById('canvas-wrap');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.setClearColor(0x0e0e0e,1);
+renderer.outputEncoding=THREE.sRGBEncoding;
+renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure=1.2;
+wrap.appendChild(renderer.domElement);
+
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x0e0e0e);
+scene.fog=new THREE.FogExp2(0x0e0e0e,.035);
+
+const camera=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.01,500);
+camera.position.set(0,0,5);
+
+scene.add(new THREE.AmbientLight(0xffffff,.55));
+const sunL=new THREE.DirectionalLight(0xa8c4d4,1.1); sunL.position.set(3,5,4); scene.add(sunL);
+const rimL=new THREE.DirectionalLight(0xa8c4d4,.2); rimL.position.set(-4,-2,-3); scene.add(rimL);
+
+const pivot=new THREE.Group(); scene.add(pivot);
+
+// ═══════════════════════════════════════════
+// GLB LOADER
+// ═══════════════════════════════════════════
+const loader=new THREE.GLTFLoader();
+function loadGLB(url){return new Promise((res,rej)=>loader.load(url,res,undefined,rej));}
+
+function fitModel(model,size){
+  const box=new THREE.Box3().setFromObject(model);
+  const cen=box.getCenter(new THREE.Vector3());
+  const siz=box.getSize(new THREE.Vector3());
+  const dom=Math.max(siz.x,siz.y); // scale by XY face, ignore Z depth
+  const sc=(size||2.5)/dom;
+  model.scale.setScalar(sc);
+  model.position.set(-cen.x*sc,-cen.y*sc,0);
+}
+
+// ═══════════════════════════════════════════
+// FACE DATA
+// ═══════════════════════════════════════════
+function mkFaceData(geo){
+  const g=geo.index?geo.toNonIndexed():geo.clone();
+  g.computeVertexNormals();
+  const pos=g.getAttribute('position'), nor=g.getAttribute('normal');
+  const faces=[];
+  for(let f=0;f<pos.count/3;f++){
+    const a=f*3,b=f*3+1,c=f*3+2;
+    faces.push({a,b,c,
+      cx:(pos.getX(a)+pos.getX(b)+pos.getX(c))/3,
+      cy:(pos.getY(a)+pos.getY(b)+pos.getY(c))/3,
+      cz:(pos.getZ(a)+pos.getZ(b)+pos.getZ(c))/3,
+      nx:(nor.getX(a)+nor.getX(b)+nor.getX(c))/3,
+      ny:(nor.getY(a)+nor.getY(b)+nor.getY(c))/3,
+      nz:(nor.getZ(a)+nor.getZ(b)+nor.getZ(c))/3,
+      v:[[pos.getX(a),pos.getY(a),pos.getZ(a)],
+         [pos.getX(b),pos.getY(b),pos.getZ(b)],
+         [pos.getX(c),pos.getY(c),pos.getZ(c)]]});
+  }
+  return{faces,pos,geo:g};
+}
+
+function extractFD(scene){
+  const fds=[];
+  scene.traverse(ch=>{
+    if(!ch.isMesh||!ch.geometry) return;
+    const fd=mkFaceData(ch.geometry);
+    ch.geometry=fd.geo;
+    fds.push(fd);
+  });
+  return fds;
+}
+
+function resetFD(fds){
+  if(!fds) return;
+  (Array.isArray(fds)?fds:[fds]).forEach(fd=>{
+    fd.faces.forEach(f=>{
+      for(let v=0;v<3;v++){
+        const idx=f.a+v;
+        fd.pos.setXYZ(idx,f.v[v][0],f.v[v][1],f.v[v][2]);
+      }
+    });
+    fd.pos.needsUpdate=true;
+  });
+}
+
+// ═══════════════════════════════════════════
+// TRANSFORMS
+// ═══════════════════════════════════════════
+
+// FORGET: disperse / cohere
+function applyForget(fds,t){
+  if(!fds) return;
+  (Array.isArray(fds)?fds:[fds]).forEach(fd=>{
+    const{faces,pos}=fd;
+    faces.forEach(f=>{
+      if(t===0){
+        for(let v=0;v<3;v++) pos.setXYZ(f.a+v,f.v[v][0],f.v[v][1],f.v[v][2]);
+      } else if(t>0){
+        const d=t*4,dx=f.nx*d+f.cx*t*.4,dy=f.ny*d+f.cy*t*.4,dz=f.nz*d+f.cz*t*.4;
+        for(let v=0;v<3;v++) pos.setXYZ(f.a+v,f.v[v][0]+dx,f.v[v][1]+dy,f.v[v][2]+dz);
+      } else {
+        const s=1+t,sp=1-t*0.25;
+        for(let v=0;v<3;v++) pos.setXYZ(f.a+v,f.v[v][0]*sp,f.v[v][1]*sp,f.v[v][2]*s);
+      }
+    });
+    pos.needsUpdate=true;
+    fd.geo.computeVertexNormals();
+  });
+}
+
+// DENY: squish/stretch (Y scale)
+function applyDeny(fds,t){
+  if(!fds) return;
+  (Array.isArray(fds)?fds:[fds]).forEach(fd=>{
+    const{faces,pos}=fd;
+    const ys=Math.max(0.01,1+t*3.0); // exaggerated
+    faces.forEach(f=>{
+      for(let v=0;v<3;v++) pos.setXYZ(f.a+v,f.v[v][0],f.v[v][1]*ys,f.v[v][2]);
+    });
+    pos.needsUpdate=true;
+    fd.geo.computeVertexNormals();
+  });
+}
+
+// BREATHE: exhale=subtract faces, inhale=add/layer vertices
+const breatheSeeds=new Map(); // fd index → Float32Array of orig positions
+let breatheFDs=[], breatheOrigPos=[];
+
+function captureBreathe(){
+  breatheFDs=[]; breatheOrigPos=[];
+  pivot.traverse(ch=>{
+    if(!ch.isMesh||!ch.geometry) return;
+    if(ch.geometry.index){
+      ch.geometry=ch.geometry.toNonIndexed();
+      ch.geometry.computeVertexNormals();
+    }
+    breatheFDs.push(ch);
+    breatheOrigPos.push(ch.geometry.getAttribute('position').array.slice());
+  });
+}
+
+function applyBreathe(t){
+  if(!breatheFDs.length) return;
+  breatheFDs.forEach((ch,mi)=>{
+    const orig=breatheOrigPos[mi];
+    const geo=ch.geometry;
+    const pos=geo.getAttribute('position');
+    const nor=geo.getAttribute('normal');
+    const count=pos.count;
+
+    if(t===0){
+      for(let i=0;i<count*3;i++) pos.array[i]=orig[i];
+    } else if(t>0){
+      // INHALE: vertices swell outward with wave variation
+      const spread=t*0.12;
+      for(let i=0;i<count;i++){
+        const wave=(Math.sin(i*0.25)*0.5+0.5);
+        const d=spread*(1+wave*t*2.5);
+        pos.setXYZ(i,
+          orig[i*3]+nor.getX(i)*d,
+          orig[i*3+1]+nor.getY(i)*d,
+          orig[i*3+2]+nor.getZ(i)*d
+        );
+      }
+    } else {
+      // EXHALE: collapse every nth face to centroid — geometry thins out
+      const u=-t;
+      const skip=Math.max(2,Math.round(4/(u+0.01)));
+      for(let i=0;i<count*3;i++) pos.array[i]=orig[i];
+      const fc=Math.floor(count/3);
+      for(let f=0;f<fc;f++){
+        if(f%skip!==0) continue;
+        const i0=f*3,i1=f*3+1,i2=f*3+2;
+        const cx=(orig[i0*3]+orig[i1*3]+orig[i2*3])/3;
+        const cy=(orig[i0*3+1]+orig[i1*3+1]+orig[i2*3+1])/3;
+        const cz=(orig[i0*3+2]+orig[i1*3+2]+orig[i2*3+2])/3;
+        pos.setXYZ(i0,cx,cy,cz);
+        pos.setXYZ(i1,cx,cy,cz);
+        pos.setXYZ(i2,cx,cy,cz);
+      }
+    }
+    pos.needsUpdate=true;
+    geo.computeVertexNormals();
+  });
+}
+
+// ═══════════════════════════════════════════
+// MODEL CACHE
+// ═══════════════════════════════════════════
+const cache={}; // interaction → {gltf, fds}
+let SCANS=[];
+
+async function preload(scans){
+  const fill=document.getElementById('loading-fill');
+  for(let i=0;i<scans.length;i++){
+    const s=scans[i];
+    try{
+      const gltf=await loadGLB(s.glb_url);
+      const fds=s.interaction==='breathe'?null:extractFD(gltf.scene);
+      cache[s.interaction]={gltf,fds};
+    }catch(e){console.warn('load fail',s.word,e);}
+    fill.style.width=((i+1)/scans.length*100)+'%';
+  }
+}
+
+function resetAll(){
+  Object.values(cache).forEach(({fds})=>{if(fds) resetFD(fds);});
+}
+
+function getModel(scan){
+  const c=cache[scan.interaction];
+  if(!c) return null;
+  if(c.fds) resetFD(c.fds);
+  const model=c.gltf.scene.clone();
+  // reattach facedata geo to cloned meshes
+  let idx=0;
+  model.traverse(ch=>{
+    if(!ch.isMesh) return;
+    if(c.fds&&c.fds[idx]) ch.geometry=c.fds[idx].geo;
+    idx++;
+  });
+  return{model, fds:c.fds};
+}
+
+// ═══════════════════════════════════════════
+// GRID
+// ═══════════════════════════════════════════
+const gridScenes=[];
+
+function buildGrid(){
+  const inner=document.getElementById('grid-inner');
+  inner.innerHTML='';
+  gridScenes.forEach(g=>{cancelAnimationFrame(g.af);g.ren.dispose();});
+  gridScenes.length=0;
+
+  SCANS.forEach((scan,i)=>{
+    const cell=document.createElement('div'); cell.className='gc';
+    // canvas host — full size div, ResizeObserver handles sizing
+    const chost=document.createElement('div');
+    chost.style.cssText='width:100%;height:100%;';
+    const lbl=document.createElement('div'); lbl.className='gc-label';
+    lbl.innerHTML=`<div class="gc-word">${scan.word}</div>
+                   <div class="gc-date">${fmtDate(scan.date)}</div>`;
+    cell.appendChild(chost); cell.appendChild(lbl);
+    inner.appendChild(cell);
+
+    const s=new THREE.Scene();
+    s.background=new THREE.Color(0x0e0e0e);
+    s.fog=new THREE.FogExp2(0x0e0e0e,.07);
+    s.add(new THREE.AmbientLight(0xffffff,.55));
+    const dl=new THREE.DirectionalLight(0xa8c4d4,1); dl.position.set(3,5,4); s.add(dl);
+
+    const w=chost.clientWidth||160, h=chost.clientHeight||130;
+    const cam=new THREE.PerspectiveCamera(50,w/h,.01,100);
+    cam.position.set(0,0,3.2);
+
+    const ren=new THREE.WebGLRenderer({antialias:true});
+    ren.setClearColor(0x0e0e0e,1); ren.setPixelRatio(1); ren.setSize(w,h);
+    ren.outputEncoding=THREE.sRGBEncoding;
+    ren.toneMapping=THREE.ACESFilmicToneMapping; ren.toneMappingExposure=1.2;
+    chost.appendChild(ren.domElement);
+
+    // use cached model for grid
+    let mesh;
+    const c=cache[scan.interaction];
+    if(c){
+      resetFD(c.fds);
+      mesh=c.gltf.scene.clone();
+      if(c.fds){
+        let mi=0;
+        mesh.traverse(ch=>{if(!ch.isMesh) return; if(c.fds[mi]) ch.geometry=c.fds[mi].geo; mi++;});
+      }
+      const gsize=scan.interaction==='deny'?4.2:2.8;
+      fitModel(mesh,gsize);
+      mesh.rotation.x=0.15;
+    } else {
+      mesh=new THREE.Mesh(
+        new THREE.BoxGeometry(1.4,1.4,1.4),
+        new THREE.MeshStandardMaterial({color:0x555555,roughness:.9,flatShading:true})
+      );
+    }
+    s.add(mesh);
+
+    let rot=i*Math.PI*0.5+0.4, af;
+    const tick=()=>{
+      af=requestAnimationFrame(tick);
+      rot+=0.005;
+      mesh.rotation.y=rot;
+      ren.render(s,cam);
+    };
+    tick();
+
+    new ResizeObserver(()=>{
+      const nw=chost.clientWidth, nh=chost.clientHeight;
+      if(nw>0&&nh>0){cam.aspect=nw/nh; cam.updateProjectionMatrix(); ren.setSize(nw,nh);}
+    }).observe(chost);
+
+    gridScenes.push({s,cam,ren,get af(){return af;},set af(v){af=v;}});
+    cell.addEventListener('click',()=>enterScan(i));
+    cell.addEventListener('touchend',e=>{e.preventDefault();enterScan(i);},{passive:false});
+  });
+}
+
+// ═══════════════════════════════════════════
+// FLY CAMERA
+// ═══════════════════════════════════════════
+let fFrom,fTo,fT=1,fDur=1.4,fCb=null,fFlying=false;
+let lkFrom=new THREE.Vector3(), lkTo=new THREE.Vector3(), lkNow=new THREE.Vector3();
+
+function flyTo(pos,look,dur,cb){
+  fFrom=camera.position.clone(); fTo=pos.clone();
+  lkFrom.copy(lkNow); lkTo.copy(look);
+  fT=0; fFlying=true; fDur=dur; fCb=cb||null;
+}
+function ease(t){return t<.5?2*t*t:-1+(4-2*t)*t;}
+
+// ═══════════════════════════════════════════
+// ORBIT
+// ═══════════════════════════════════════════
+let isDragging=false, dragLast={x:0,y:0};
+
+function inDetail(){
+  return document.getElementById('canvas-wrap').classList.contains('on');
+}
+
+document.addEventListener('pointerdown',e=>{
+  if(!inDetail()) return;
+  if(e.target.closest('#ctrl-bar')||e.target.closest('#detail-bar')) return;
+  isDragging=true;
+  dragLast={x:e.clientX,y:e.clientY};
+});
+document.addEventListener('pointermove',e=>{
+  if(!isDragging) return;
+  const dx=e.clientX-dragLast.x, dy=e.clientY-dragLast.y;
+  pivot.rotation.y+=dx*0.009;
+  pivot.rotation.x+=dy*0.009;
+  pivot.rotation.x=Math.max(-Math.PI/2,Math.min(Math.PI/2,pivot.rotation.x));
+  dragLast={x:e.clientX,y:e.clientY};
+});
+document.addEventListener('pointerup',()=>{ isDragging=false; });
+document.addEventListener('pointercancel',()=>{ isDragging=false; });
+
+// ═══════════════════════════════════════════
+// SCAN STATE
+// ═══════════════════════════════════════════
+let activeScan=null, activeFDs=null;
+const EMBODY_BASE=2.2;
+
+async function enterScan(idx){
+  const scan=SCANS[idx]; activeScan=scan;
+
+  // kill grid
+  document.getElementById('grid').classList.remove('on');
+  gridScenes.forEach(g=>{cancelAnimationFrame(g.af);g.ren.dispose();});
+  gridScenes.length=0;
+
+  // clear pivot
+  while(pivot.children.length) pivot.remove(pivot.children[0]);
+  pivot.scale.setScalar(1);
+  pivot.rotation.set(0.2,0,0);
+  pivot.position.set(0,0,0);
+
+  // show canvas
+  document.getElementById('archive-bar').style.display='none';
+  document.getElementById('detail-bar').classList.add('on');
+  document.getElementById('canvas-wrap').classList.add('on');
+
+  // audio
+  if(scan.audio_url) startAudio(scan.audio_url);
+
+  // load model
+  activeFDs=null;
+  if(scan.interaction==='breathe'){
+    const c=cache['breathe'];
+    if(c){
+      const m=c.gltf.scene.clone(); fitModel(m,3.2); pivot.add(m);
+      setTimeout(captureBreathe,60);
+    }
+  } else {
+    const r=getModel(scan);
+    if(r){
+      const sz=scan.interaction==='deny'?5.2:3.6;
+      fitModel(r.model,sz);
+      pivot.add(r.model);
+      activeFDs=r.fds;
+    }
+  }
+
+  // meta
+  document.getElementById('dm-word').textContent=scan.word;
+  document.getElementById('dm-date').textContent=fmtDate(scan.date);
+
+  // controls
+  document.querySelectorAll('.cpanel').forEach(p=>p.classList.remove('on'));
+  const cp=document.getElementById('cp-'+scan.interaction);
+  console.log('activating panel:', 'cp-'+scan.interaction, 'found:', !!cp);
+  if(cp) cp.classList.add('on');
+  document.getElementById('ctrl-bar').classList.add('on');
+
+  // reset sliders
+  document.getElementById('sl-forget').value=0;
+  document.getElementById('sl-deny').value=0;
+  document.getElementById('sl-breathe').value=0;
+  document.getElementById('sl-embody').value=0;
+
+  // fly in
+  const fz=scan.interaction==='deny'?1.9:2.3;
+  flyTo(new THREE.Vector3(0,0,fz),new THREE.Vector3(0,0,0),1.4,null);
+}
+
+function leaveScan(){
+  activeScan=null; activeFDs=null;
+  fadeAudio();
+  resetAll();
+  breatheFDs=[]; breatheOrigPos=[];
+  pivot.scale.setScalar(1);
+  document.querySelectorAll('.cpanel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('ctrl-bar').classList.remove('on');
+  document.getElementById('detail-bar').classList.remove('on');
+  document.getElementById('canvas-wrap').classList.remove('on');
+  document.getElementById('archive-bar').style.display='flex';
+  while(pivot.children.length) pivot.remove(pivot.children[0]);
+  flyTo(new THREE.Vector3(0,0,5),new THREE.Vector3(0,0,0),1.3,()=>{
+    document.getElementById('grid').classList.add('on');
+    setTimeout(buildGrid,80);
+  });
+}
+
+document.getElementById('back-btn').addEventListener('click',leaveScan);
+
+// ═══════════════════════════════════════════
+// SLIDER HANDLERS
+// ═══════════════════════════════════════════
+document.getElementById('sl-forget').addEventListener('input',function(){
+  if(activeScan?.interaction!=='forget') return;
+  applyForget(activeFDs,+this.value);
+  setAudio(+this.value);
+});
+
+document.getElementById('sl-deny').addEventListener('input',function(){
+  if(activeScan?.interaction!=='deny') return;
+  applyDeny(activeFDs,+this.value);
+  setAudio(Math.abs(+this.value)*0.4);
+});
+
+document.getElementById('sl-breathe').addEventListener('input',function(){
+  if(activeScan?.interaction!=='breathe') return;
+  applyBreathe(+this.value);
+  setAudio(+this.value*0.6);
+});
+
+document.getElementById('sl-embody').addEventListener('input',function(){
+  if(activeScan?.interaction!=='embody') return;
+  const t=+this.value;
+  if(t<=0){
+    camera.position.z=EMBODY_BASE+(-t)*9;
+    pivot.scale.setScalar(1);
+  } else {
+    camera.position.z=Math.max(0.02,EMBODY_BASE-t*2.18);
+    pivot.scale.setScalar(1+t*18);
+  }
+  setAudio(t*0.5);
+});
+
+// ═══════════════════════════════════════════
+// ABOUT
+// ═══════════════════════════════════════════
+document.getElementById('about-btn').addEventListener('click',()=>{
+  document.getElementById('about').classList.add('on');
+});
+document.getElementById('about-close').addEventListener('click',()=>{
+  document.getElementById('about').classList.remove('on');
+});
+
+// ═══════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════
+const MONTHS={Jan:'01',Feb:'02',Mar:'03',Apr:'04',May:'05',Jun:'06',
+              Jul:'07',Aug:'08',Sep:'09',Oct:'10',Nov:'11',Dec:'12'};
+function fmtDate(raw){
+  if(!raw) return '';
+  const m=raw.match(/(\w+)\s+(\d+)\s+(\d+)/);
+  return m ? MONTHS[m[1]]+'.'+String(m[2]).padStart(2,'0')+'.'+m[3] : raw;
+}
+
+// ═══════════════════════════════════════════
+// RENDER LOOP
+// ═══════════════════════════════════════════
+const clock=new THREE.Clock();
+
+function animate(){
+  requestAnimationFrame(animate);
+  const dt=clock.getDelta();
+
+  // auto-rotate when in detail and not dragging
+  if(inDetail() && !isDragging){
+    pivot.rotation.y+=dt*0.22;
+  }
+
+  // camera fly
+  if(fFlying){
+    fT=Math.min(fT+dt/fDur,1);
+    const e=ease(fT);
+    camera.position.lerpVectors(fFrom,fTo,e);
+    lkNow.lerpVectors(lkFrom,lkTo,e);
+    camera.lookAt(lkNow);
+    if(fT>=1){fFlying=false;fCb&&fCb();fCb=null;}
+  } else {
+    camera.lookAt(lkNow);
+  }
+
+  renderer.render(scene,camera);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+async function init(){
+  document.getElementById('loading-label').textContent='fetching';
+  SCANS=await fetchScans();
+  document.getElementById('loading-label').textContent='loading models';
+  await preload(SCANS);
+  document.getElementById('loading-fill').style.width='100%';
+  setTimeout(()=>{
+    document.getElementById('loading').classList.add('gone');
+    document.getElementById('grid').classList.add('on');
+    setTimeout(buildGrid,80);
+  },350);
+}
+init();
+</script>
+</body>
+</html>
