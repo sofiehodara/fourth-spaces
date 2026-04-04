@@ -248,6 +248,22 @@ html,body{
   <div id="load-sub">loading</div>
 </div>
 
+<!-- MOBILE MESSAGE -->
+<div id="mobile-msg" style="display:none;position:fixed;inset:0;z-index:60;background:var(--bg);
+  flex-direction:column;align-items:center;justify-content:center;padding:40px 28px;text-align:center;">
+  <div style="max-width:320px;">
+    <div style="font-family:'Neuton',serif;font-style:italic;font-size:22px;color:var(--paper);margin-bottom:20px;">
+      Fourth Spaces
+    </div>
+    <div style="font-family:'Neuton',serif;font-size:17px;line-height:1.8;color:var(--mid);margin-bottom:28px;">
+      This experience uses 3D rendering and is best viewed on a desktop browser.
+    </div>
+    <div style="font-family:'Space Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);">
+      sofiehodara.github.io/fourth-spaces
+    </div>
+  </div>
+</div>
+
 <!-- ABOUT -->
 <div id="about">
   <div id="about-box">
@@ -615,8 +631,14 @@ function cloneForDetail(scan){
 let gridAF=null;
 const gridCells=[];
 
-// detect mobile/touch device
+// detect mobile
 const isMobile=('ontouchstart' in window)||navigator.maxTouchPoints>0;
+
+if(isMobile){
+  // Show mobile message, hide everything else
+  document.getElementById('loading').classList.add('gone');
+  document.getElementById('mobile-msg').style.display='flex';
+}
 
 function buildGrid(){
   const inner=document.getElementById('grid-inner');
@@ -863,6 +885,7 @@ window.addEventListener('resize',()=>{
 // INIT
 // ═══════════════════════
 async function init(){
+  if(isMobile)return;
   document.getElementById('load-sub').textContent='fetching';
   SCANS=await fetchScans();
   document.getElementById('load-sub').textContent='loading models';
