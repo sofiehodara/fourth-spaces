@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Fourth Spaces</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link href="https://fonts.googleapis.com/css2?family=Neuton:ital,wght@0,200;0,300;0,400;1,400&family=Space+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#12151a;
+  --paper:#f0f0f0;
+  --mid:#777777;
+  --accent:#a8c4d4;
+  --line:rgba(168,196,212,.15);
+}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--paper);
+  font-family:"Space Mono",monospace;font-weight:300;font-size:16px;
+  overflow:hidden;-webkit-tap-highlight-color:transparent;}
+
+/* LOADING */
+#loading{position:fixed;inset:0;z-index:60;background:var(--bg);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  transition:opacity .5s;}
+#loading.gone{opacity:0;pointer-events:none;}
+#load-title{font-family:"Neuton",serif;font-style:italic;font-size:20px;color:var(--paper);margin-bottom:20px;}
+#load-track{width:120px;height:1px;background:var(--line);}
+#load-fill{height:100%;width:0%;background:var(--accent);transition:width .2s;}
+#load-label{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--mid);margin-top:10px;}
+
+/* ABOUT */
+#about{position:fixed;inset:0;z-index:40;background:var(--bg);
+  display:flex;align-items:center;justify-content:center;padding:60px 28px 40px;
+  opacity:0;pointer-events:none;transition:opacity .3s;}
+#about.on{opacity:1;pointer-events:auto;}
+#about-box{max-width:520px;width:100%;}
+#about-close{display:block;margin-bottom:20px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--mid);background:none;border:none;cursor:pointer;font-family:"Space Mono",monospace;
+  padding:0;transition:color .2s;}
+#about-close:hover{color:var(--paper);}
+#about h2{font-family:"Neuton",serif;font-weight:400;font-style:italic;
+  font-size:clamp(1.3rem,3vw,1.8rem);color:var(--paper);margin-bottom:16px;}
+#about p{font-size:17px;line-height:1.8;color:var(--mid);margin-bottom:12px;font-family:"Neuton",serif;}
+#about a{color:var(--accent);font-family:"Space Mono",monospace;font-size:12px;text-decoration:none;letter-spacing:.05em;}
+#about a:hover{text-decoration:underline;}
+
+/* HOME */
+#home{position:fixed;inset:0;z-index:5;display:none;
+  align-items:center;justify-content:center;padding:60px 10vw;}
+#home.on{display:flex;}
+#home-text{font-family:"Neuton",serif;font-weight:200;font-style:normal;
+  font-size:clamp(20px,2.8vw,38px);line-height:1.65;color:#ffffff;max-width:860px;}
+@keyframes shimmer{
+  0%{color:var(--accent);text-shadow:none;}
+  40%{color:#d8eef8;text-shadow:0 0 14px rgba(168,196,212,.9),0 0 28px rgba(168,196,212,.4);}
+  100%{color:var(--accent);text-shadow:none;}
+}
+#home-text a{color:var(--accent);font-style:italic;text-decoration:underline;
+  text-decoration-color:var(--accent);text-underline-offset:5px;cursor:pointer;
+  animation:shimmer 3.5s ease-in-out infinite;}
+#home-text a:nth-child(1){animation-delay:0s;}
+#home-text a:nth-child(2){animation-delay:0.9s;}
+#home-text a:nth-child(3){animation-delay:1.8s;}
+#home-text a:nth-child(4){animation-delay:2.7s;}
+#home-text a:hover{opacity:.7;animation:none;color:#fff;}
+#home-more{margin-top:32px;display:block;width:100%;text-align:center;
+  font-family:"Space Mono",monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--mid);background:none;border:none;cursor:pointer;padding:0;transition:color .2s;}
+#home-more:hover{color:var(--paper);}
+
+/* CANVAS (detail view) */
+#cw{position:fixed;inset:0;z-index:1;display:none;cursor:grab;}
+#cw:active{cursor:grabbing;}
+#cw.on{display:block;}
+#cw canvas{display:block;width:100%!important;height:100%!important;}
+
+/* DETAIL TOP BAR */
+#det-bar{position:fixed;top:0;left:0;right:0;z-index:10;height:64px;
+  background:transparent;display:none;align-items:center;pointer-events:none;}
+#det-bar.on{display:flex;}
+#det-word{flex:1;text-align:center;font-family:"Neuton",serif;font-weight:200;font-style:italic;
+  font-size:28px;color:var(--paper);text-transform:lowercase;pointer-events:none;}
+#det-hint{font-size:10px;color:rgba(240,240,240,.3);letter-spacing:.07em;line-height:1.7;
+  font-family:"Space Mono",monospace;text-align:right;padding-right:20px;flex-shrink:0;pointer-events:none;}
+#det-spacer{width:80px;flex-shrink:0;}
+
+/* HOME BUTTON top left */
+#btn-home{position:fixed;top:16px;left:20px;z-index:15;display:none;
+  background:none;border:none;cursor:pointer;padding:6px 8px;
+  font-family:"Space Mono",monospace;font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:#fff;align-items:center;gap:7px;transition:opacity .2s;}
+#btn-home.on{display:flex;}
+#btn-home:hover{opacity:.6;}
+
+/* BOTTOM NAV */
+#bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:10;
+  display:none;justify-content:space-between;align-items:center;
+  padding:0 28px 28px;pointer-events:none;}
+#bottom-nav.on{display:flex;}
+#btn-prev,#btn-next{pointer-events:auto;background:none;border:none;cursor:pointer;
+  font-size:30px;color:#fff;padding:8px;transition:opacity .2s;}
+#btn-prev:hover,#btn-next:hover{opacity:.6;}
+
+/* CONTROL BAR */
+#ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;
+  background:var(--bg);border-top:1px solid var(--line);height:72px;
+  display:none;align-items:center;justify-content:center;padding:0 28px;}
+#ctrl.on{display:flex;}
+.cpanel{display:none;align-items:center;gap:14px;width:100%;max-width:480px;}
+.cpanel.on{display:flex;}
+.clbl{font-family:"Neuton",serif;font-style:italic;font-size:15px;
+  color:rgba(240,240,240,.5);min-width:60px;flex-shrink:0;}
+.clbl.r{text-align:right;}
+.csl{-webkit-appearance:none;appearance:none;flex:1;height:3px;
+  background:rgba(255,255,255,.2);border-radius:2px;outline:none;cursor:pointer;}
+.csl::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+  background:#fff;cursor:pointer;box-shadow:0 0 10px rgba(255,255,255,.4);}
+.csl::-moz-range-thumb{width:22px;height:22px;border-radius:50%;background:#fff;cursor:pointer;border:none;}
+@media(max-width:600px){#ctrl{padding:0 16px;}.clbl{min-width:44px;font-size:13px;}}
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div id="loading">
+  <div id="load-title">Fourth Spaces</div>
+  <div id="load-track"><div id="load-fill"></div></div>
+  <div id="load-label">loading</div>
+</div>
+
+<!-- ABOUT -->
+<div id="about">
+  <div id="about-box">
+    <button id="about-close">← close</button>
+    <h2>Fourth Spaces</h2>
+    <p><i>Fourth Spaces</i> is a web-based interactive dictionary presenting 3D models made using Scaniverse, a free smartphone photogrammetry application. Photogrammetry applications translate the physical world into digital models by using a mobile phone to scan objects or environments.</p>
+    <p>The results are broken, glitched, and incomplete representations that highlight the limitations of our tools and the ephemeral nature of memory. This imagery evokes a "fourth space": a realm between the physical and the digital, in which the scans forget and resist the physical world, while breathing life into and embodying the opportunities of digital spaces.</p>
+    <p>This iteration of the project contains four scans taken in Boston between 2024 and 2026. Each interactive image is paired with a vocabulary word and a visual distortion that illustrates the evolving material language of <i>Fourth Spaces.</i></p>
+    <p><a href="https://github.com/sofiehodara/fourth-spaces" target="_blank">github.com/sofiehodara/fourth-spaces</a></p>
+  </div>
+</div>
+
+<!-- CANVAS -->
+<div id="cw"></div>
+
+<!-- HOME -->
+<div id="home">
+  <div id="home-text">
+    Photogrammetry scans are often glitched and incomplete. They represent a &ldquo;fourth space&rdquo; &mdash; a realm between the physical and digital, in which scans <a data-scan="forget">forget</a> and <a data-scan="deny">resist</a> the physical world, while they <a data-scan="breathe">breathe</a> life into and <a data-scan="embody">embody</a> the opportunities of digital media.
+    <button id="home-more">More</button>
+  </div>
+</div>
+
+<!-- HOME BUTTON -->
+<button id="btn-home">
+  <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
+    <path d="M9 2L2 8V16H7V11H11V16H16V8L9 2Z" stroke="white" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+  </svg>
+  Home
+</button>
+
+<!-- BOTTOM NAV -->
+<div id="bottom-nav">
+  <button id="btn-prev">&#8592;</button>
+  <button id="btn-next">&#8594;</button>
+</div>
+
+<!-- DETAIL BAR -->
+<div id="det-bar">
+  <div id="det-spacer"></div>
+  <div id="det-word"></div>
+  <div id="det-hint">drag to rotate<br>slide to transform</div>
+</div>
+
+<!-- CONTROLS -->
+<div id="ctrl">
+  <div class="cpanel" id="cp-forget">
+    <span class="clbl">persist</span>
+    <input type="range" class="csl" id="sl-forget" min="-1" max="1" step="0.005" value="0">
+    <span class="clbl r">erase</span>
+  </div>
+  <div class="cpanel" id="cp-deny">
+    <span class="clbl">push</span>
+    <input type="range" class="csl" id="sl-deny" min="-1" max="1" step="0.01" value="0">
+    <span class="clbl r">pull</span>
+  </div>
+  <div class="cpanel" id="cp-breathe">
+    <span class="clbl">inhale</span>
+    <input type="range" class="csl" id="sl-breathe" min="-1" max="1" step="0.01" value="0">
+    <span class="clbl r">exhale</span>
+  </div>
+  <div class="cpanel" id="cp-embody">
+    <span class="clbl">flesh</span>
+    <input type="range" class="csl" id="sl-embody" min="-1" max="1" step="0.005" value="0">
+    <span class="clbl r">pixel</span>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ─── MOBILE ───────────────────────────────
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && window.innerWidth < 1024;
+
+// ─── SUPABASE ─────────────────────────────
+const { createClient } = supabase;
+const sb = createClient(
+  'https://gxmfzqoprpcwwpwwszfh.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd4bWZ6cW9wcnBjd3dwd3dzemZoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUxNjE2NDcsImV4cCI6MjA5MDczNzY0N30.EICC6p90b7HBirIzftLXuuGbv_FcIRRBqZQHDZVtCLQ'
+);
+
+const ORDER = ['forget','deny','breathe','embody'];
+
+async function fetchScans() {
+  const { data, error } = await sb.from('scans').select('*').order('display_order');
+  if (error) { console.error(error); return []; }
+  const mapped = data.map(s => ({
+    ...s,
+    interaction: s.interaction === 'refuse'   ? 'deny'
+               : s.interaction === 'repeat'   ? 'breathe'
+               : s.interaction === 'multiply' ? 'breathe'
+               : s.interaction
+  }));
+  mapped.sort((a,b) => ORDER.indexOf(a.interaction) - ORDER.indexOf(b.interaction));
+  return mapped;
+}
+
+// ─── AUDIO ────────────────────────────────
+let actx, gainNode, distNode, filterNode, srcNode;
+let audioReady = false, audioUrl = null;
+
+function mkCurve(a) {
+  const n=256, c=new Float32Array(n);
+  for (let i=0; i<n; i++) { const x=(i*2/n)-1; c[i]=a===0?x:((Math.PI+a)*x)/(Math.PI+a*Math.abs(x)); }
+  return c;
+}
+
+async function startAudio(url) {
+  try {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') await actx.resume();
+    if (url === audioUrl && audioReady) return;
+    audioUrl = url; audioReady = false;
+    if (srcNode) { try { srcNode.stop(); } catch(e) {} srcNode = null; }
+
+    gainNode   = actx.createGain();
+    distNode   = actx.createWaveShaper(); distNode.oversample = '2x';
+    filterNode = actx.createBiquadFilter(); filterNode.type = 'lowpass';
+
+    // Compressor — hard ceiling
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -18; comp.knee.value = 6;
+    comp.ratio.value = 12; comp.attack.value = 0.003; comp.release.value = 0.25;
+    const master = actx.createGain(); master.gain.value = 0.45;
+
+    // Light reverb
+    const rl = actx.sampleRate * 0.8;
+    const rb = actx.createBuffer(2, rl, actx.sampleRate);
+    for (let ch=0; ch<2; ch++) {
+      const d = rb.getChannelData(ch);
+      for (let i=0; i<rl; i++) d[i] = (Math.random()*2-1) * Math.pow(1-i/rl, 3);
+    }
+    const conv = actx.createConvolver(); conv.buffer = rb;
+    const rvg  = actx.createGain(); rvg.gain.value = 0.1;
+
+    distNode.connect(filterNode);
+    filterNode.connect(gainNode);
+    gainNode.connect(comp);
+    comp.connect(master);
+    master.connect(actx.destination);
+    filterNode.connect(conv);
+    conv.connect(rvg);
+    rvg.connect(actx.destination);
+
+    filterNode.frequency.value = 18000; filterNode.Q.value = 0;
+    distNode.curve = mkCurve(0); gainNode.gain.value = 0;
+
+    const res = await fetch(url);
+    const buf = await res.arrayBuffer();
+    const dec = await actx.decodeAudioData(buf);
+    srcNode = actx.createBufferSource();
+    srcNode.buffer = dec; srcNode.loop = true; srcNode.playbackRate.value = 0.92;
+    srcNode.connect(distNode); srcNode.start(0);
+    gainNode.gain.setTargetAtTime(0.22, actx.currentTime, 0.5);
+    audioReady = true;
+  } catch(e) { console.warn('audio:', e); }
+}
+
+function setAudio(t) {
+  if (!audioReady || !actx || !gainNode) return;
+  const now = actx.currentTime;
+  if (t <= 0) {
+    const u = -t;
+    gainNode.gain.setTargetAtTime(0.22 + u*0.06, now, 0.2);
+    filterNode.frequency.setTargetAtTime(800 + u*17200, now, 0.3);
+    filterNode.Q.setTargetAtTime(Math.max(0, 2-u*2), now, 0.3);
+    distNode.curve = mkCurve(Math.max(0, 40-u*40));
+    if (srcNode) srcNode.playbackRate.setTargetAtTime(0.75 + u*0.2, now, 0.3);
+  } else {
+    gainNode.gain.setTargetAtTime(0.06, now, 0.15);
+    filterNode.frequency.setTargetAtTime(Math.max(120, 800-t*680), now, 0.2);
+    filterNode.Q.setTargetAtTime(t*18, now, 0.2);
+    distNode.curve = mkCurve(40 + t*360);
+    if (srcNode) srcNode.playbackRate.setTargetAtTime(Math.max(0.2, 0.75-t*0.55), now, 0.2);
+  }
+}
+
+function setBreatheAudio(t) {
+  if (!audioReady || !actx || !gainNode) return;
+  const now = actx.currentTime;
+  if (t <= 0) {
+    const u = -t;
+    gainNode.gain.setTargetAtTime(0.55 + u*0.3, now, 0.15);
+    filterNode.frequency.setTargetAtTime(300 + u*17700, now, 0.2);
+    filterNode.Q.setTargetAtTime(u*6, now, 0.2);
+    distNode.curve = mkCurve(80 + u*120);
+    if (srcNode) srcNode.playbackRate.setTargetAtTime(Math.max(0.15, 0.75-u*0.6), now, 0.2);
+  } else {
+    gainNode.gain.setTargetAtTime(0.45 + t*0.2, now, 0.15);
+    filterNode.frequency.setTargetAtTime(Math.max(200, 18000-t*16000), now, 0.2);
+    filterNode.Q.setTargetAtTime(t*12, now, 0.2);
+    distNode.curve = mkCurve(40 + t*280);
+    if (srcNode) srcNode.playbackRate.setTargetAtTime(0.75 + t*0.4, now, 0.2);
+  }
+}
+
+function fadeAudio() {
+  if (!gainNode || !actx) return;
+  gainNode.gain.setTargetAtTime(0, actx.currentTime, 0.4);
+}
+
+// ─── HOME AUDIO ───────────────────────────
+let hActx=null, hSrc=null, hGain=null, hIdx=0, hTimer=null;
+
+async function startHomeAudio(scans) {
+  try {
+    if (!hActx) hActx = new (window.AudioContext || window.webkitAudioContext)();
+    if (hActx.state === 'suspended') await hActx.resume();
+    if (!hGain) { hGain = hActx.createGain(); hGain.gain.value=0; hGain.connect(hActx.destination); }
+    playHomeTrack(scans);
+  } catch(e) {}
+}
+
+async function playHomeTrack(scans) {
+  if (!hActx || !hGain) return;
+  const tracks = scans.filter(s => s.interaction==='embody' || s.interaction==='breathe');
+  if (!tracks.length) return;
+  const scan = tracks[hIdx % tracks.length];
+  if (!scan || !scan.audio_url) return;
+  try {
+    if (hSrc) {
+      hGain.gain.setTargetAtTime(0, hActx.currentTime, 0.8);
+      const old = hSrc; hSrc = null;
+      setTimeout(() => { try { old.stop(); } catch(e) {} }, 1200);
+    }
+    const res = await fetch(scan.audio_url);
+    const buf = await res.arrayBuffer();
+    const dec = await hActx.decodeAudioData(buf);
+    hSrc = hActx.createBufferSource();
+    hSrc.buffer = dec; hSrc.playbackRate.value = 0.5;
+    hSrc.connect(hGain); hSrc.start(0);
+    hGain.gain.setTargetAtTime(0.18, hActx.currentTime, 1.5);
+    if (hTimer) clearTimeout(hTimer);
+    hTimer = setTimeout(() => { hIdx++; playHomeTrack(scans); }, 7000);
+  } catch(e) {}
+}
+
+function stopHomeAudio() {
+  if (hGain && hActx) hGain.gain.setTargetAtTime(0, hActx.currentTime, 0.8);
+  if (hTimer) { clearTimeout(hTimer); hTimer = null; }
+  setTimeout(() => { if (hSrc) { try { hSrc.stop(); } catch(e) {} hSrc = null; } }, 1000);
+}
+
+// ─── THREE SCENE ──────────────────────────
+const cw = document.getElementById('cw');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x12151a, 1);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+cw.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x12151a);
+scene.fog = new THREE.FogExp2(0x12151a, 0.03);
+
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.01, 500);
+camera.position.set(0, 0, 5);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sunL = new THREE.DirectionalLight(0xffffff, 0.9); sunL.position.set(3,5,4); scene.add(sunL);
+const rimL = new THREE.DirectionalLight(0xa8c4d4, 0.2); rimL.position.set(-4,-2,-3); scene.add(rimL);
+
+const pivot = new THREE.Group(); scene.add(pivot);
+
+// ─── GLB ──────────────────────────────────
+const loader = new THREE.GLTFLoader();
+function loadGLB(url) { return new Promise((res,rej) => loader.load(url,res,undefined,rej)); }
+
+function fitModel(model, size) {
+  const box = new THREE.Box3().setFromObject(model);
+  const cen = box.getCenter(new THREE.Vector3());
+  const siz = box.getSize(new THREE.Vector3());
+  const sc  = (size||2.5) / Math.max(siz.x, siz.y);
+  model.scale.setScalar(sc);
+  model.position.set(-cen.x*sc, -cen.y*sc, 0);
+}
+
+// ─── FACE DATA ────────────────────────────
+function mkFD(geo) {
+  const g = geo.index ? geo.toNonIndexed() : geo.clone();
+  g.computeVertexNormals();
+  const pos=g.getAttribute('position'), nor=g.getAttribute('normal');
+  const faces = [];
+  for (let f=0; f<pos.count/3; f++) {
+    const a=f*3, b=f*3+1, c=f*3+2;
+    faces.push({ a,b,c,
+      cx:(pos.getX(a)+pos.getX(b)+pos.getX(c))/3,
+      cy:(pos.getY(a)+pos.getY(b)+pos.getY(c))/3,
+      cz:(pos.getZ(a)+pos.getZ(b)+pos.getZ(c))/3,
+      nx:(nor.getX(a)+nor.getX(b)+nor.getX(c))/3,
+      ny:(nor.getY(a)+nor.getY(b)+nor.getY(c))/3,
+      nz:(nor.getZ(a)+nor.getZ(b)+nor.getZ(c))/3,
+      v:[[pos.getX(a),pos.getY(a),pos.getZ(a)],
+         [pos.getX(b),pos.getY(b),pos.getZ(b)],
+         [pos.getX(c),pos.getY(c),pos.getZ(c)]] });
+  }
+  return { faces, pos, geo:g };
+}
+
+function extractFDs(sc) {
+  const fds=[];
+  sc.traverse(ch => {
+    if (!ch.isMesh || !ch.geometry) return;
+    const fd = mkFD(ch.geometry);
+    ch.geometry = fd.geo;
+    fds.push(fd);
+  });
+  return fds;
+}
+
+function resetFDs(fds) {
+  if (!fds) return;
+  (Array.isArray(fds)?fds:[fds]).forEach(fd => {
+    fd.faces.forEach(f => {
+      for (let v=0; v<3; v++) fd.pos.setXYZ(f.a+v, f.v[v][0], f.v[v][1], f.v[v][2]);
+    });
+    fd.pos.needsUpdate = true;
+  });
+}
+
+// ─── TRANSFORMS ───────────────────────────
+function applyForget(fds, t) {
+  if (!fds) return;
+  (Array.isArray(fds)?fds:[fds]).forEach(fd => {
+    const { faces, pos } = fd;
+    faces.forEach(f => {
+      if (t === 0) {
+        for (let v=0; v<3; v++) pos.setXYZ(f.a+v, f.v[v][0], f.v[v][1], f.v[v][2]);
+      } else if (t > 0) {
+        const d=t*4, dx=f.nx*d+f.cx*t*.4, dy=f.ny*d+f.cy*t*.4, dz=f.nz*d+f.cz*t*.4;
+        for (let v=0; v<3; v++) pos.setXYZ(f.a+v, f.v[v][0]+dx, f.v[v][1]+dy, f.v[v][2]+dz);
+      } else {
+        const s=1+t, sp=1-t*0.25;
+        for (let v=0; v<3; v++) pos.setXYZ(f.a+v, f.v[v][0]*sp, f.v[v][1]*sp, f.v[v][2]*s);
+      }
+    });
+    pos.needsUpdate = true; fd.geo.computeVertexNormals();
+  });
+}
+
+function applyDeny(fds, t) {
+  if (!fds) return;
+  (Array.isArray(fds)?fds:[fds]).forEach(fd => {
+    const { faces, pos } = fd;
+    const ys = Math.max(0.01, 1+t*3.0);
+    faces.forEach(f => {
+      for (let v=0; v<3; v++) pos.setXYZ(f.a+v, f.v[v][0], f.v[v][1]*ys, f.v[v][2]);
+    });
+    pos.needsUpdate = true; fd.geo.computeVertexNormals();
+  });
+}
+
+let breatheMeshes=[], breatheOrig=[];
+function captureBreathe() {
+  breatheMeshes=[]; breatheOrig=[];
+  pivot.traverse(ch => {
+    if (!ch.isMesh || !ch.geometry) return;
+    if (ch.geometry.index) { ch.geometry=ch.geometry.toNonIndexed(); ch.geometry.computeVertexNormals(); }
+    breatheMeshes.push(ch);
+    breatheOrig.push(ch.geometry.getAttribute('position').array.slice());
+  });
+}
+
+function applyBreathe(t) {
+  if (!breatheMeshes.length) return;
+  breatheMeshes.forEach((ch, mi) => {
+    const orig = breatheOrig[mi];
+    const geo  = ch.geometry;
+    const pos  = geo.getAttribute('position');
+    const nor  = geo.getAttribute('normal');
+    const cnt  = pos.count;
+    if (t === 0) {
+      for (let i=0; i<cnt*3; i++) pos.array[i] = orig[i];
+    } else if (t > 0) {
+      const sp = t*0.12;
+      for (let i=0; i<cnt; i++) {
+        const wave = Math.sin(i*0.25)*0.5+0.5;
+        const d = sp*(1+wave*t*2.5);
+        pos.setXYZ(i, orig[i*3]+nor.getX(i)*d, orig[i*3+1]+nor.getY(i)*d, orig[i*3+2]+nor.getZ(i)*d);
+      }
+    } else {
+      const u=-t, skip=Math.max(2, Math.round(4/(u+0.01)));
+      for (let i=0; i<cnt*3; i++) pos.array[i]=orig[i];
+      const fc=Math.floor(cnt/3);
+      for (let f=0; f<fc; f++) {
+        if (f%skip!==0) continue;
+        const i0=f*3, i1=f*3+1, i2=f*3+2;
+        const cx=(orig[i0*3]+orig[i1*3]+orig[i2*3])/3;
+        const cy=(orig[i0*3+1]+orig[i1*3+1]+orig[i2*3+1])/3;
+        const cz=(orig[i0*3+2]+orig[i1*3+2]+orig[i2*3+2])/3;
+        pos.setXYZ(i0,cx,cy,cz); pos.setXYZ(i1,cx,cy,cz); pos.setXYZ(i2,cx,cy,cz);
+      }
+    }
+    pos.needsUpdate=true; geo.computeVertexNormals();
+  });
+}
+
+// ─── MODEL CACHE ──────────────────────────
+const cache = {};
+let SCANS = [];
+
+async function preload(scans) {
+  const fill = document.getElementById('load-fill');
+  for (let i=0; i<scans.length; i++) {
+    const s = scans[i];
+    if (s.glb_url) {
+      try {
+        const gltf = await loadGLB(s.glb_url);
+        const fds  = s.interaction==='breathe' ? null : extractFDs(gltf.scene);
+        cache[s.interaction] = { gltf, fds };
+      } catch(e) { console.warn('preload fail', s.word, e); }
+    }
+    fill.style.width = ((i+1)/scans.length*100)+'%';
+  }
+}
+
+function resetAll() {
+  Object.values(cache).forEach(({ fds }) => { if (fds) resetFDs(fds); });
+}
+
+function cloneForDetail(scan) {
+  const c = cache[scan.interaction];
+  if (!c) return null;
+  if (c.fds) resetFDs(c.fds);
+  const model = c.gltf.scene.clone();
+  if (c.fds) {
+    let i=0;
+    model.traverse(ch => { if (!ch.isMesh) return; if (c.fds[i]) ch.geometry=c.fds[i].geo; i++; });
+  }
+  return { model, fds: c.fds };
+}
+
+// ─── FLY ──────────────────────────────────
+let fFrom, fTo, fT=1, fDur=1.3, fCb=null, flying=false;
+let lkF=new THREE.Vector3(), lkT=new THREE.Vector3(), lkN=new THREE.Vector3();
+
+function flyTo(pos, dur, cb) {
+  fFrom=camera.position.clone(); fTo=pos.clone();
+  lkF.copy(lkN); lkT.set(0,0,0);
+  fT=0; flying=true; fDur=dur; fCb=cb||null;
+}
+function easeIO(t) { return t<.5 ? 2*t*t : -1+(4-2*t)*t; }
+
+// ─── ORBIT ────────────────────────────────
+let isDrag=false, dragLast={x:0,y:0};
+
+function inDetail() { return cw.classList.contains('on'); }
+
+document.addEventListener('pointerdown', e => {
+  if (!inDetail()) return;
+  if (e.target.closest('#ctrl') || e.target.closest('#det-bar')) return;
+  isDrag=true; dragLast={x:e.clientX, y:e.clientY};
+});
+document.addEventListener('pointermove', e => {
+  if (!isDrag) return;
+  pivot.rotation.y += (e.clientX-dragLast.x)*0.009;
+  pivot.rotation.x += (e.clientY-dragLast.y)*0.009;
+  pivot.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, pivot.rotation.x));
+  dragLast={x:e.clientX, y:e.clientY};
+});
+document.addEventListener('pointerup',     () => { isDrag=false; });
+document.addEventListener('pointercancel', () => { isDrag=false; });
+
+// ─── IDLE TIMER ───────────────────────────
+let idleTimer=null;
+function clearIdle() { if (idleTimer) { clearTimeout(idleTimer); idleTimer=null; } }
+function resetIdle() { clearIdle(); idleTimer=setTimeout(()=>{ if(activeScan) leaveScan(); }, 30000); }
+document.addEventListener('pointerdown', () => { if (activeScan) resetIdle(); });
+
+// ─── SCAN STATE ───────────────────────────
+let activeScan=null, activeFDs=null;
+const EMBODY_BASE=2.9;
+const SCAN_ORDER=['forget','deny','breathe','embody'];
+
+function getScan(interaction) { return SCANS.find(s=>s.interaction===interaction); }
+
+async function enterScan(idx) {
+  const scan = SCANS[idx];
+  if (!scan) return;
+  activeScan = scan;
+
+  // hide home, show detail
+  document.getElementById('home').classList.remove('on');
+  document.getElementById('det-bar').classList.add('on');
+  document.getElementById('ctrl').classList.add('on');
+  document.getElementById('bottom-nav').classList.add('on');
+  document.getElementById('btn-home').classList.add('on');
+  cw.classList.add('on');
+  stopHomeAudio();
+  resetIdle();
+
+  // clear pivot
+  while (pivot.children.length) pivot.remove(pivot.children[0]);
+  pivot.scale.setScalar(1);
+  pivot.rotation.set(0.18, 0, 0);
+  pivot.position.set(0, 0, 0);
+  breatheMeshes=[]; breatheOrig=[];
+
+  // set word
+  document.getElementById('det-word').textContent = scan.word;
+
+  // show correct control panel, reset sliders
+  document.querySelectorAll('.cpanel').forEach(p => p.classList.remove('on'));
+  const cp = document.getElementById('cp-'+scan.interaction);
+  if (cp) cp.classList.add('on');
+  ['forget','deny','breathe','embody'].forEach(k => {
+    const sl = document.getElementById('sl-'+k);
+    if (sl) sl.value = 0;
+  });
+
+  // load model
+  activeFDs = null;
+  if (scan.interaction === 'breathe') {
+    const c = cache['breathe'];
+    if (c) { const m=c.gltf.scene.clone(); fitModel(m,3.2); pivot.add(m); setTimeout(captureBreathe,80); }
+  } else {
+    const r = cloneForDetail(scan);
+    if (r) {
+      const sz = scan.interaction==='deny' ? 5.0 : 3.6;
+      fitModel(r.model, sz); pivot.add(r.model); activeFDs=r.fds;
+    }
+  }
+
+  // audio
+  if (scan.audio_url) startAudio(scan.audio_url);
+
+  // fly in
+  const fz = scan.interaction==='deny' ? 2.4 : 2.9;
+  flyTo(new THREE.Vector3(0,0,fz), 1.3, null);
+}
+
+function leaveScan() {
+  activeScan=null; activeFDs=null;
+  fadeAudio(); resetAll();
+  breatheMeshes=[]; breatheOrig=[];
+  clearIdle();
+  pivot.scale.setScalar(1);
+  document.querySelectorAll('.cpanel').forEach(p => p.classList.remove('on'));
+  document.getElementById('ctrl').classList.remove('on');
+  document.getElementById('det-bar').classList.remove('on');
+  document.getElementById('bottom-nav').classList.remove('on');
+  document.getElementById('btn-home').classList.remove('on');
+  cw.classList.remove('on');
+  while (pivot.children.length) pivot.remove(pivot.children[0]);
+  flyTo(new THREE.Vector3(0,0,5), 1.2, () => { showHome(); });
+}
+
+// ─── HOME ─────────────────────────────────
+function showHome() {
+  document.getElementById('home').classList.add('on');
+  document.getElementById('det-bar').classList.remove('on');
+  document.getElementById('ctrl').classList.remove('on');
+  document.getElementById('bottom-nav').classList.remove('on');
+  document.getElementById('btn-home').classList.remove('on');
+  clearIdle();
+  if (SCANS && SCANS.length) startHomeAudio(SCANS);
+}
+
+// home word links
+document.getElementById('home-text').addEventListener('click', e => {
+  const a = e.target.closest('a[data-scan]');
+  if (!a) return;
+  const s = getScan(a.dataset.scan);
+  if (s) enterScan(SCANS.indexOf(s));
+});
+
+// more/about
+document.getElementById('home-more').addEventListener('click', () => document.getElementById('about').classList.add('on'));
+document.getElementById('about-close').addEventListener('click', () => document.getElementById('about').classList.remove('on'));
+
+// home button
+document.getElementById('btn-home').addEventListener('click', () => { if (activeScan) leaveScan(); });
+
+// prev/next
+document.getElementById('btn-prev').addEventListener('click', () => {
+  if (!activeScan) return;
+  const cur = SCAN_ORDER.indexOf(activeScan.interaction);
+  const s   = getScan(SCAN_ORDER[(cur-1+SCAN_ORDER.length)%SCAN_ORDER.length]);
+  if (s) enterScan(SCANS.indexOf(s));
+});
+document.getElementById('btn-next').addEventListener('click', () => {
+  if (!activeScan) return;
+  const s = getScan(SCAN_ORDER[(SCAN_ORDER.indexOf(activeScan.interaction)+1)%SCAN_ORDER.length]);
+  if (s) enterScan(SCANS.indexOf(s));
+});
+
+// ─── SLIDERS ──────────────────────────────
+document.getElementById('sl-forget').addEventListener('input', function() {
+  if (activeScan?.interaction !== 'forget') return;
+  applyForget(activeFDs, +this.value); setAudio(+this.value * 0.9);
+});
+document.getElementById('sl-deny').addEventListener('input', function() {
+  if (activeScan?.interaction !== 'deny') return;
+  applyDeny(activeFDs, +this.value); setAudio(+this.value * 0.9);
+});
+document.getElementById('sl-breathe').addEventListener('input', function() {
+  if (activeScan?.interaction !== 'breathe') return;
+  applyBreathe(+this.value); setBreatheAudio(+this.value);
+});
+document.getElementById('sl-embody').addEventListener('input', function() {
+  if (activeScan?.interaction !== 'embody') return;
+  const t = +this.value;
+  if (t <= 0) { camera.position.z=EMBODY_BASE+(-t)*9; pivot.scale.setScalar(1); }
+  else        { camera.position.z=Math.max(0.005, EMBODY_BASE-t*2.895); pivot.scale.setScalar(1+t*32); }
+  setAudio(t * 0.9);
+});
+
+// ─── GRID (desktop only, single renderer) ─
+let gridAF=null;
+const gridCells=[];
+
+function buildGrid() {
+  const inner = document.getElementById('grid-inner');
+  if (!inner) return;
+  inner.innerHTML='';
+  if (gridAF) { cancelAnimationFrame(gridAF); gridAF=null; }
+  gridCells.length=0;
+
+  SCANS.forEach((scan,i) => {
+    const cell = document.createElement('div');
+    cell.style.cssText='position:relative;border:1px solid rgba(168,196,212,.12);cursor:pointer;overflow:hidden;transition:border-color .2s;';
+    cell.addEventListener('mouseenter',()=>cell.style.borderColor='rgba(168,196,212,.35)');
+    cell.addEventListener('mouseleave',()=>cell.style.borderColor='rgba(168,196,212,.12)');
+
+    const cv = document.createElement('canvas');
+    cv.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;display:block;';
+    const lbl = document.createElement('div');
+    lbl.style.cssText='position:absolute;bottom:0;left:0;right:0;padding:10px 12px;background:linear-gradient(transparent,rgba(18,21,26,.94));pointer-events:none;z-index:2;';
+    lbl.innerHTML=`<div style="font-family:Neuton,serif;font-style:italic;font-size:16px;color:#f0f0f0;text-transform:lowercase;">${scan.word}</div>`;
+    cell.appendChild(cv); cell.appendChild(lbl);
+    inner.appendChild(cell);
+
+    const s = new THREE.Scene(); s.background=new THREE.Color(0x12151a);
+    s.add(new THREE.AmbientLight(0xffffff,.55));
+    const dl=new THREE.DirectionalLight(0xffffff,.9); dl.position.set(3,5,4); s.add(dl);
+    const cam=new THREE.PerspectiveCamera(50,1,.01,100); cam.position.set(0,0,3.2);
+
+    const c = cache[scan.interaction];
+    let mesh;
+    if (c) {
+      resetFDs(c.fds);
+      mesh = c.gltf.scene.clone();
+      if (c.fds) { let mi=0; mesh.traverse(ch=>{ if(!ch.isMesh)return; if(c.fds[mi])ch.geometry=c.fds[mi].geo; mi++; }); }
+      fitModel(mesh, scan.interaction==='deny'?4.0:2.8); mesh.rotation.x=0.12;
+    } else {
+      mesh = new THREE.Mesh(new THREE.BoxGeometry(1.4,1.4,1.4), new THREE.MeshStandardMaterial({color:0x333333,roughness:.9,flatShading:true}));
+    }
+    s.add(mesh);
+
+    const ctx=cv.getContext('2d');
+    gridCells.push({s,cam,mesh,cv,ctx,rot:i*Math.PI*.5+.4});
+    cell.addEventListener('click',()=>enterScan(i));
+  });
+
+  function tick() {
+    gridAF=requestAnimationFrame(tick);
+    gridCells.forEach(gc=>{
+      const w=gc.cv.offsetWidth, h=gc.cv.offsetHeight;
+      if(!w||!h) return;
+      if(gc.cv.width!==w||gc.cv.height!==h){gc.cv.width=w;gc.cv.height=h;}
+      gc.rot+=0.005; gc.mesh.rotation.y=gc.rot;
+      gc.cam.aspect=w/h; gc.cam.updateProjectionMatrix();
+      renderer.setSize(w,h,false);
+      renderer.render(gc.s,gc.cam);
+      gc.ctx.drawImage(renderer.domElement,0,0,w,h);
+    });
+    renderer.setSize(innerWidth,innerHeight,false);
+  }
+  tick();
+}
+
+// ─── RENDER LOOP ──────────────────────────
+const clock = new THREE.Clock();
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  if (inDetail() && !isDrag) pivot.rotation.y += dt*0.2;
+  if (flying) {
+    fT = Math.min(fT+dt/fDur, 1);
+    const e = easeIO(fT);
+    camera.position.lerpVectors(fFrom, fTo, e);
+    lkN.lerpVectors(lkF, lkT, e);
+    camera.lookAt(lkN);
+    if (fT >= 1) { flying=false; if(fCb){fCb();fCb=null;} }
+  } else { camera.lookAt(lkN); }
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+
+// ─── INIT ─────────────────────────────────
+async function init() {
+  if (isMobile) {
+    document.getElementById('load-fill').style.width='100%';
+    setTimeout(()=>{ document.getElementById('loading').classList.add('gone'); showHome(); },300);
+    return;
+  }
+  document.getElementById('load-label').textContent='fetching';
+  SCANS = await fetchScans();
+  document.getElementById('load-label').textContent='loading';
+  await preload(SCANS);
+  document.getElementById('load-fill').style.width='100%';
+  setTimeout(()=>{ document.getElementById('loading').classList.add('gone'); showHome(); },300);
+}
+init();
+</script>
+</body>
+</html>
