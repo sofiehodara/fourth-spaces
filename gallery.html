@@ -370,6 +370,8 @@ function setResistAudio(t) {
 function fadeAudio() {
   if (!gainNode || !actx) return;
   gainNode.gain.setTargetAtTime(0, actx.currentTime, 0.4);
+  // silence ring oscillator if active
+  if (actx._ringGain) actx._ringGain.gain.setTargetAtTime(0, actx.currentTime, 0.2);
 }
 
 // ─── HOME AUDIO ───────────────────────────
@@ -702,7 +704,7 @@ async function enterScan(idx) {
     const r = cloneForDetail(scan);
     if (r) {
       fitModel(r.model, 3.6); pivot.add(r.model); activeFDs=r.fds;
-      setTimeout(() => { captureEmbodyFDs(); }, 80);
+      setTimeout(() => { captureEmbodyFDs(); }, 300);
     }
   } else {
     const r = cloneForDetail(scan);
@@ -714,11 +716,14 @@ async function enterScan(idx) {
 
   // audio
   if (scan.audio_url) startAudio(scan.audio_url);
+  // ensure ring osc is silent if not deny
+  if (scan.interaction !== 'deny' && actx && actx._ringGain) {
+    actx._ringGain.gain.setTargetAtTime(0, actx.currentTime, 0.1);
+  }
 
   // fly in
-  if (scan.interaction === 'embody' || scan.interaction === 'forget') {
-    // top-down: camera above model looking straight down
-    flyTo(new THREE.Vector3(0, 3.2, 0.001), 1.3, null);
+  if (scan.interaction === 'embody') {
+    flyTo(new THREE.Vector3(0, 0, 2.9), 1.3, null);
     lkT.set(0, 0, 0);
   } else {
     const fz = scan.interaction==='deny' ? 2.4 : 2.9;
@@ -793,54 +798,82 @@ let embodyOrigPos = [];      // original positions
 function captureEmbodyFDs() {
   embodyFDs = []; embodyOrigPos = [];
   pivot.traverse(ch => {
-    if (!ch.isMesh || !ch.geometry || ch === embodyWireframe) return;
+    if (!ch.isMesh || !ch.geometry) return;
+    // always convert to non-indexed
     if (ch.geometry.index) {
       ch.geometry = ch.geometry.toNonIndexed();
-      ch.geometry.computeVertexNormals();
     }
+    ch.geometry.computeVertexNormals();
+    const pos = ch.geometry.getAttribute('position');
     embodyFDs.push(ch);
-    embodyOrigPos.push(ch.geometry.getAttribute('position').array.slice());
+    embodyOrigPos.push(pos.array.slice());
+    console.log('captured mesh faces:', Math.floor(pos.count/3));
   });
+  console.log('total embody meshes:', embodyFDs.length);
 }
 
 function applyEmbodyVisual(t) {
   if (!embodyFDs.length) return;
 
-  if (t > 0.8) {
-    // GRAVITY PULL: faces fall downward at different speeds
-    const u = (t - 0.8) / 0.2; // 0→1 over last 20%
-    embodyFDs.forEach((ch, mi) => {
-      const orig = embodyOrigPos[mi];
-      const geo  = ch.geometry;
-      const pos  = geo.getAttribute('position');
-      const cnt  = pos.count;
-      const faceCount = Math.floor(cnt / 3);
-      for (let f=0; f<faceCount; f++) {
-        // seed per face — controls fall speed and lateral drift
-        const seed  = ((f * 1664525 + 1013904223) & 0xffffffff) / 0xffffffff;
-        const seed2 = ((f * 22695477 + 1)          & 0xffffffff) / 0xffffffff;
-        const fall  = u * u * seed * 1.8;       // quadratic — accelerates like gravity
-        const drift = u * (seed2 - 0.5) * 0.3;  // slight horizontal scatter
-        for (let v=0; v<3; v++) {
-          const i = f*3 + v;
-          pos.setXYZ(i,
-            orig[i*3]   + drift,
-            orig[i*3+1] - fall,   // downward
-            orig[i*3+2]
-          );
-        }
+  // rotation starts at t=0.6, scale starts at t=0.65, both complete at t=1
+  const rotU   = t > 0.5  ? Math.min(1, (t-0.5) /0.5)  : 0; // 0→1 from 50%→100%
+  const scaleU = t > 0.65 ? Math.min(1, (t-0.65)/0.35) : 0; // 0→1 from 65%→100%
+  const angle  = rotU * Math.PI * 0.5; // 0→90°
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const faceScale = 1 + scaleU * 0.1; // 1.0→1.1 (10% growth)
+
+  embodyFDs.forEach((ch, mi) => {
+    const orig = embodyOrigPos[mi];
+    const geo  = ch.geometry;
+    const pos  = geo.getAttribute('position');
+    const nor  = geo.getAttribute('normal');
+    const faceCount = Math.floor(pos.count / 3);
+
+    for (let f=0; f<faceCount; f++) {
+      const i0=f*3, i1=f*3+1, i2=f*3+2;
+
+      // restore non-selected faces
+      if (f % 7 !== 0 || t <= 0.6) {
+        pos.setXYZ(i0, orig[i0*3], orig[i0*3+1], orig[i0*3+2]);
+        pos.setXYZ(i1, orig[i1*3], orig[i1*3+1], orig[i1*3+2]);
+        pos.setXYZ(i2, orig[i2*3], orig[i2*3+1], orig[i2*3+2]);
+        continue;
       }
-      pos.needsUpdate = true;
-    });
-  } else {
-    // reset when below threshold
-    embodyFDs.forEach((ch, mi) => {
-      const orig = embodyOrigPos[mi];
-      const pos  = ch.geometry.getAttribute('position');
-      for (let i=0; i<orig.length; i++) pos.array[i] = orig[i];
-      pos.needsUpdate = true;
-    });
-  }
+
+      // face centroid
+      const cx = (orig[i0*3]+orig[i1*3]+orig[i2*3])/3;
+      const cy = (orig[i0*3+1]+orig[i1*3+1]+orig[i2*3+1])/3;
+      const cz = (orig[i0*3+2]+orig[i1*3+2]+orig[i2*3+2])/3;
+
+      // face normal
+      const nx = nor.getX(i0), ny = nor.getY(i0), nz = nor.getZ(i0);
+
+      for (let v=0; v<3; v++) {
+        const idx = f*3+v;
+        // translate to centroid
+        let rx = orig[idx*3]   - cx;
+        let ry = orig[idx*3+1] - cy;
+        let rz = orig[idx*3+2] - cz;
+
+        // scale face by 10%
+        rx *= faceScale; ry *= faceScale; rz *= faceScale;
+
+        // Rodrigues rotation around face normal
+        const dot = rx*nx + ry*ny + rz*nz;
+        const crx = ny*rz - nz*ry;
+        const cry = nz*rx - nx*rz;
+        const crz = nx*ry - ny*rx;
+
+        rx = rx*cos + crx*sin + nx*dot*(1-cos);
+        ry = ry*cos + cry*sin + ny*dot*(1-cos);
+        rz = rz*cos + crz*sin + nz*dot*(1-cos);
+
+        pos.setXYZ(idx, cx+rx, cy+ry, cz+rz);
+      }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  });
 }
 
 document.getElementById('sl-forget').addEventListener('input', function() {
@@ -858,8 +891,26 @@ document.getElementById('sl-breathe').addEventListener('input', function() {
 document.getElementById('sl-embody').addEventListener('input', function() {
   if (activeScan?.interaction !== 'embody') return;
   const t = +this.value;
-  if (t <= 0) { camera.position.z=EMBODY_BASE+(-t)*9; pivot.scale.setScalar(1); }
-  else        { camera.position.z=Math.max(0.005, EMBODY_BASE-t*2.895); pivot.scale.setScalar(1+t*32); }
+  flying = false;
+  if (t <= 0) {
+    // LEFT: pull back
+    const u = -t;
+    pivot.scale.setScalar(1);
+    camera.position.set(0, u*1.5, Math.max(2.9, 2.9 + u*12));
+  } else {
+    // RIGHT: arc from side (0,0,2.9) to top-down (0,3.2,0.001)
+    // with aggressive zoom — eased slow near 100%
+    const e = 1 - Math.pow(1-t, 2.5); // ease out
+    // camera arcs: y rises, z drops
+    const camY = e * 3.2;
+    const camZ = Math.max(0.001, 2.9 - e * 2.899);
+    // zoom: scale model up massively as you approach top
+    const zoom = 1 + e * 60;
+    camera.position.set(0, camY, camZ);
+    pivot.scale.setScalar(zoom);
+  }
+  lkN.set(0,0,0); lkF.copy(lkN); lkT.copy(lkN);
+  camera.lookAt(lkN);
   applyEmbodyVisual(t);
   setAudio(t * 0.9);
 });
